@@ -1,4 +1,5 @@
 const { spawn } = require('child_process');
+const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
@@ -39,6 +40,18 @@ function parseResult(text) {
   return out;
 }
 
+function leanConfigHome() {
+  const root = path.join(os.tmpdir(), 'devin-autotagger-config');
+  const dir = path.join(root, 'devin');
+  fs.mkdirSync(dir, { recursive: true });
+  let config = {};
+  try { config = JSON.parse(fs.readFileSync(path.join(os.homedir(), '.config/devin/config.json'), 'utf8')); } catch {}
+  config.read_config_from = { agents_standard: false, cursor: false, windsurf: false, claude: false };
+  fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify(config, null, 2));
+  fs.writeFileSync(path.join(dir, 'mcp_config.json'), JSON.stringify({ mcpServers: {} }));
+  return root;
+}
+
 function runDevin({ devinPath, model, imagePath, prompt, signal }) {
   const args = ['--respect-workspace-trust', 'false', '--permission-mode', 'auto'];
   if (model) args.push('--model', model);
@@ -48,6 +61,7 @@ function runDevin({ devinPath, model, imagePath, prompt, signal }) {
   const env = {
     ...process.env,
     HOME: home,
+    XDG_CONFIG_HOME: leanConfigHome(),
     PATH: [`${home}/.local/bin`, '/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin', process.env.PATH].filter(Boolean).join(':'),
   };
 

@@ -8,10 +8,11 @@ const DEFAULTS = {
   optSkipDone: true,
   devinPath: `${require('os').homedir()}/.local/bin/devin`,
   model: 'claude-opus-5-5-low',
-  concurrency: 3,
+  concurrency: 2,
   markerTag: 'Tagged by Devin',
 };
 const SETTINGS_KEY = 'devin-autotagger-settings';
+const MAX_CONCURRENCY = 2;
 const VOCAB_SIZE = 150;
 const VOCAB_EXCLUDE = /^Processed with AI Autotagger/;
 
@@ -22,6 +23,7 @@ let controller = null;
 function loadSettings() {
   const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
   const s = { ...DEFAULTS, ...saved };
+  s.concurrency = Math.min(s.concurrency, MAX_CONCURRENCY);
   for (const [key, value] of Object.entries(s)) {
     const el = $(key);
     if (!el) continue;
@@ -123,7 +125,7 @@ async function run() {
       progress();
     }
   };
-  await Promise.all(Array.from({ length: Math.min(s.concurrency, items.length) }, worker));
+  await Promise.all(Array.from({ length: Math.min(s.concurrency, MAX_CONCURRENCY, items.length) }, worker));
 
   controller = null;
   $('stopBtn').hidden = true;
