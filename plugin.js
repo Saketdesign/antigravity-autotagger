@@ -7,7 +7,7 @@ const DEFAULTS = {
   optReplaceAnnotation: false,
   optSkipDone: true,
   devinPath: `${require('os').homedir()}/.local/bin/devin`,
-  model: '',
+  model: 'claude-opus-5-5-low',
   concurrency: 3,
   markerTag: 'Tagged by Devin',
 };

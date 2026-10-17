@@ -94,6 +94,7 @@ async function analyzeItem(item, opts, signal) {
   });
   const output = await runDevin({ devinPath: opts.devinPath, model: opts.model, imagePath, prompt, signal });
   const result = parseResult(output);
+  if (opts.tags && !result.tags?.length) throw new Error('Devin could not read the image');
   applyResult(item, result, opts);
   return result;
 }
