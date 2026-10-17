@@ -110,9 +110,10 @@ async function run() {
   const queue = items.map(item => ({ item, row: addLogRow(item) }));
   const worker = async () => {
     while (queue.length && !controller.signal.aborted) {
-      const { item, row } = queue.shift();
+      const { item: queued, row } = queue.shift();
       row.set('Asking Devin…');
       try {
+        const item = (await eagle.item.getById(queued.id)) || queued;
         const result = await analyzeItem(item, opts, controller.signal);
         await item.save();
         row.done(item, result);
@@ -138,6 +139,7 @@ eagle.onPluginCreate(() => {
   document.querySelectorAll('input, textarea').forEach(el => el.addEventListener('change', readSettings));
   $('runBtn').addEventListener('click', run);
   $('stopBtn').addEventListener('click', () => controller?.abort());
+  window.addEventListener('beforeunload', () => controller?.abort());
   refreshSelection();
   window.addEventListener('focus', refreshSelection);
   setInterval(refreshSelection, 1500);

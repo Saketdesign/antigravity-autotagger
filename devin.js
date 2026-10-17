@@ -1,4 +1,4 @@
-const { spawn } = require('child_process');
+const { spawn, execFile } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
@@ -44,12 +44,35 @@ function leanConfigHome() {
   const root = path.join(os.tmpdir(), 'devin-autotagger-config');
   const dir = path.join(root, 'devin');
   fs.mkdirSync(dir, { recursive: true });
-  let config = {};
-  try { config = JSON.parse(fs.readFileSync(path.join(os.homedir(), '.config/devin/config.json'), 'utf8')); } catch {}
-  config.read_config_from = { agents_standard: false, cursor: false, windsurf: false, claude: false };
+  let user = {};
+  try { user = JSON.parse(fs.readFileSync(path.join(os.homedir(), '.config/devin/config.json'), 'utf8')); } catch {}
+  const config = {
+    ...(user.devin && { devin: user.devin }),
+    read_config_from: { agents_standard: false, cursor: false, windsurf: false, claude: false },
+  };
   fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify(config, null, 2));
   fs.writeFileSync(path.join(dir, 'mcp_config.json'), JSON.stringify({ mcpServers: {} }));
   return root;
+}
+
+function devinEnv() {
+  const home = os.homedir();
+  return {
+    ...process.env,
+    HOME: home,
+    XDG_CONFIG_HOME: leanConfigHome(),
+    PATH: [`${home}/.local/bin`, '/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin', process.env.PATH].filter(Boolean).join(':'),
+  };
+}
+
+function devinCommand(devinPath, args, cwd) {
+  return new Promise(resolve => execFile(devinPath, args, { cwd, env: devinEnv(), timeout: 30000 }, (err, stdout) => resolve(err ? '' : stdout)));
+}
+
+async function deleteSessions(devinPath, cwd) {
+  let sessions = [];
+  try { sessions = JSON.parse(await devinCommand(devinPath, ['list', '--format', 'json'], cwd)); } catch {}
+  for (const s of sessions) await devinCommand(devinPath, ['rm', '--force', s.id], cwd);
 }
 
 function runDevin({ devinPath, model, imagePath, prompt, signal }) {
@@ -57,16 +80,8 @@ function runDevin({ devinPath, model, imagePath, prompt, signal }) {
   if (model) args.push('--model', model);
   args.push('-p', prompt);
 
-  const home = os.homedir();
-  const env = {
-    ...process.env,
-    HOME: home,
-    XDG_CONFIG_HOME: leanConfigHome(),
-    PATH: [`${home}/.local/bin`, '/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin', process.env.PATH].filter(Boolean).join(':'),
-  };
-
   return new Promise((resolve, reject) => {
-    const child = spawn(devinPath, args, { cwd: path.dirname(imagePath), env, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(devinPath, args, { cwd: path.dirname(imagePath), env: devinEnv(), stdio: ['ignore', 'pipe', 'pipe'] });
     let stdout = '';
     let stderr = '';
     const kill = () => child.kill('SIGTERM');
@@ -106,11 +121,16 @@ async function analyzeItem(item, opts, signal) {
     currentName: item.name,
     currentTags: (item.tags || []).filter(t => t !== opts.markerTag),
   });
-  const output = await runDevin({ devinPath: opts.devinPath, model: opts.model, imagePath, prompt, signal });
+  let output;
+  try {
+    output = await runDevin({ devinPath: opts.devinPath, model: opts.model, imagePath, prompt, signal });
+  } finally {
+    await deleteSessions(opts.devinPath, path.dirname(imagePath));
+  }
   const result = parseResult(output);
   if (opts.tags && !result.tags?.length) throw new Error('Devin could not read the image');
   applyResult(item, result, opts);
   return result;
 }
 
-if (typeof module !== 'undefined') module.exports = { pickImagePath, buildPrompt, parseResult, runDevin, applyResult, analyzeItem };
+if (typeof module !== 'undefined') module.exports = { pickImagePath, buildPrompt, parseResult, runDevin, applyResult, analyzeItem, deleteSessions };
