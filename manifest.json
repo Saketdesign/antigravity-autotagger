@@ -1,0 +1,18 @@
+{
+  "id": "1cb36d16-59f9-4d3f-b6cb-53f7cc084cac",
+  "version": "0.1.0",
+  "platform": "mac",
+  "arch": "all",
+  "name": "Devin Autotagger",
+  "logo": "logo.png",
+  "keywords": ["ai", "tag", "rename", "devin"],
+  "devTools": false,
+  "main": {
+    "url": "index.html",
+    "width": 560,
+    "height": 720,
+    "minWidth": 480,
+    "minHeight": 560,
+    "multiple": false
+  }
+}

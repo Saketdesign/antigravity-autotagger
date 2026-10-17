@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <link rel="stylesheet" href="app.css">
+  <script src="devin.js"></script>
+  <script src="plugin.js" defer></script>
+</head>
+<body>
+  <main>
+    <section>
+      <h2>Instructions</h2>
+      <textarea id="instructions" rows="3"></textarea>
+    </section>
+
+    <section>
+      <h2>What to update</h2>
+      <label><input type="checkbox" id="optName"> Rename item</label>
+      <label><input type="checkbox" id="optTags"> Add tags</label>
+      <label class="sub"><input type="checkbox" id="optReplaceTags"> Replace existing tags instead of adding</label>
+      <label><input type="checkbox" id="optAnnotation"> Write description</label>
+      <label class="sub"><input type="checkbox" id="optReplaceAnnotation"> Replace existing description</label>
+      <label><input type="checkbox" id="optSkipDone"> Skip items already processed</label>
+    </section>
+
+    <details>
+      <summary>Advanced</summary>
+      <label class="field">Devin path <input type="text" id="devinPath"></label>
+      <label class="field">Model (blank = default) <input type="text" id="model" placeholder="e.g. sonnet"></label>
+      <label class="field">Run at once <input type="number" id="concurrency" min="1" max="6"></label>
+      <label class="field">Marker tag <input type="text" id="markerTag"></label>
+    </details>
+
+    <section class="log-wrap">
+      <h2>Progress <span id="progress"></span></h2>
+      <ul id="log"></ul>
+    </section>
+  </main>
+
+  <footer>
+    <span id="selection">No items selected</span>
+    <div>
+      <button id="stopBtn" class="secondary" hidden>Stop</button>
+      <button id="runBtn" disabled>Analyze</button>
+    </div>
+  </footer>
+</body>
+</html>
