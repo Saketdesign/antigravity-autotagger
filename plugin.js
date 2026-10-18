@@ -56,8 +56,10 @@ async function refreshSelection() {
   selected = await eagle.item.getSelected();
   const n = selected.length;
   const marker = $('markerTag').value.trim();
-  const tagged = $('optSkipDone').checked && marker ? selected.filter(i => (i.tags || []).includes(marker)).length : 0;
-  $('selection').textContent = !n ? 'No items selected' : `${plural(n, 'item')} selected${tagged ? ` · ${tagged} already tagged` : ''}`;
+  const tagged = $('optSkipDone').checked && marker ? selected.filter(i => (i.tags || []).includes(marker)) : [];
+  const folderOnly = $('optFolder').checked ? tagged.filter(i => !(i.folders || []).length).length : 0;
+  const skipped = tagged.length - folderOnly;
+  $('selection').textContent = !n ? 'No items selected' : `${plural(n, 'item')} selected${skipped ? ` · ${skipped} already done` : ''}${folderOnly ? ` · ${folderOnly} only need a folder` : ''}`;
   $('runBtn').textContent = n ? `Analyze ${plural(n, 'Item')}` : 'Analyze';
   $('runBtn').disabled = !n;
   if (!hasRun) showEmpty(n ? `Ready to analyze ${plural(n, 'item')}. Results will show up here.` : 'Select one or more images or videos in Eagle to get started.');
@@ -163,7 +165,10 @@ async function run(retryItems) {
   if (!opts.name && !opts.tags && !opts.annotation && !opts.folder) return alert('Pick at least one thing to update.');
 
   const source = retryItems || selected;
-  const isDone = i => !retryItems && s.optSkipDone && opts.markerTag && (i.tags || []).includes(opts.markerTag);
+  const isTagged = i => !retryItems && s.optSkipDone && opts.markerTag && (i.tags || []).includes(opts.markerTag);
+  const needsFolder = i => opts.folder && !(i.folders || []).length;
+  const isDone = i => isTagged(i) && !needsFolder(i);
+  const folderOnlyOpts = { ...opts, name: false, tags: false, annotation: false };
   const items = source.filter(i => !isDone(i));
   const skippedItems = source.filter(isDone);
 
@@ -173,7 +178,7 @@ async function run(retryItems) {
   $('summary').hidden = true;
   $('progress').textContent = '';
   $('bar').hidden = true;
-  skippedItems.forEach(item => addLogRow(item).skip('Skipped · already tagged'));
+  skippedItems.forEach(item => addLogRow(item).skip('Skipped · already done'));
 
   if (!items.length) {
     showSummary('info', `Nothing to do. ${skippedItems.length === 1 ? 'This item was' : `All ${skippedItems.length} items were`} already tagged. Turn off “Skip items already processed” to redo them.`);
@@ -203,6 +208,7 @@ async function run(retryItems) {
     opts.folder ? safe(loadFolders()) : [],
   ]);
   opts.vocabulary = opts.vocabulary.filter(t => !opts.preferredTags.includes(t));
+  folderOnlyOpts.folders = opts.folders;
 
   const worker = async () => {
     while (queue.length && !signal.aborted) {
@@ -210,7 +216,8 @@ async function run(retryItems) {
       row.start();
       try {
         const item = (await eagle.item.getById(queued.id)) || queued;
-        const result = await analyzeItem(item, opts, signal);
+        const result = await analyzeItem(item, isTagged(queued) ? folderOnlyOpts : opts, signal);
+        if (isTagged(queued) && !result.folder) throw new Error('Devin did not pick a folder');
         await item.save();
         row.done(item, result);
         done++;
