@@ -15,8 +15,6 @@ const SETTINGS_KEY = 'devin-autotagger-settings';
 const MAX_CONCURRENCY = 2;
 const VOCAB_SIZE = 150;
 const VOCAB_EXCLUDE = /^Processed with AI Autotagger/;
-const VIDEO_EXTS = new Set(['mp4', 'mov', 'm4v', 'webm', 'avi', 'mkv', 'wmv', 'flv', 'mpg', 'mpeg', '3gp', 'ogv']);
-const isVideo = item => VIDEO_EXTS.has((item.ext || '').toLowerCase());
 
 const $ = id => document.getElementById(id);
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
@@ -55,12 +53,11 @@ async function refreshSelection() {
   selected = await eagle.item.getSelected();
   const n = selected.length;
   const marker = $('markerTag').value.trim();
-  const videos = selected.filter(isVideo).length;
-  const tagged = $('optSkipDone').checked && marker ? selected.filter(i => !isVideo(i) && (i.tags || []).includes(marker)).length : 0;
-  $('selection').textContent = !n ? 'No items selected' : `${plural(n, 'item')} selected${tagged ? ` · ${tagged} already tagged` : ''}${videos ? ` · ${plural(videos, 'video')} skipped` : ''}`;
+  const tagged = $('optSkipDone').checked && marker ? selected.filter(i => (i.tags || []).includes(marker)).length : 0;
+  $('selection').textContent = !n ? 'No items selected' : `${plural(n, 'item')} selected${tagged ? ` · ${tagged} already tagged` : ''}`;
   $('runBtn').textContent = n ? `Analyze ${plural(n, 'Item')}` : 'Analyze';
   $('runBtn').disabled = !n;
-  if (!hasRun) showEmpty(n ? `Ready to analyze ${plural(n, 'item')}. Results will show up here.` : 'Select one or more images in Eagle to get started.');
+  if (!hasRun) showEmpty(n ? `Ready to analyze ${plural(n, 'item')}. Results will show up here.` : 'Select one or more images or videos in Eagle to get started.');
 }
 
 function showEmpty(text) {
@@ -145,10 +142,9 @@ async function run(retryItems) {
   if (!opts.name && !opts.tags && !opts.annotation) return alert('Pick at least one thing to update.');
 
   const source = retryItems || selected;
-  const videoItems = source.filter(isVideo);
   const isDone = i => !retryItems && s.optSkipDone && opts.markerTag && (i.tags || []).includes(opts.markerTag);
-  const items = source.filter(i => !isVideo(i) && !isDone(i));
-  const skippedItems = source.filter(i => !isVideo(i) && isDone(i));
+  const items = source.filter(i => !isDone(i));
+  const skippedItems = source.filter(isDone);
 
   hasRun = true;
   lastFailed = [];
@@ -157,12 +153,9 @@ async function run(retryItems) {
   $('progress').textContent = '';
   $('bar').hidden = true;
   skippedItems.forEach(item => addLogRow(item).skip('Skipped · already tagged'));
-  videoItems.forEach(item => addLogRow(item).skip('Skipped · video'));
 
   if (!items.length) {
-    showSummary('info', !skippedItems.length
-      ? `Nothing to do. Videos are skipped, so select some images.`
-      : `Nothing to do. ${skippedItems.length === 1 ? 'This item was' : `All ${skippedItems.length} images were`} already tagged. Turn off “Skip items already processed” to redo them.`);
+    showSummary('info', `Nothing to do. ${skippedItems.length === 1 ? 'This item was' : `All ${skippedItems.length} items were`} already tagged. Turn off “Skip items already processed” to redo them.`);
     return;
   }
 
@@ -216,12 +209,12 @@ async function run(retryItems) {
   controller = null;
   lastFailed = failed.map(f => f.item);
   setRunning(false);
-  finish({ total: items.length, done, failed, stopped, skipped: skippedItems.length, videos: videoItems.length });
+  finish({ total: items.length, done, failed, stopped, skipped: skippedItems.length });
   await refreshSelection();
 }
 
-function finish({ total, done, failed, stopped, skipped, videos }) {
-  const skippedNote = (skipped ? ` ${plural(skipped, 'item')} skipped (already tagged).` : '') + (videos ? ` ${plural(videos, 'video')} skipped.` : '');
+function finish({ total, done, failed, stopped, skipped }) {
+  const skippedNote = skipped ? ` ${plural(skipped, 'item')} skipped (already tagged).` : '';
   const canRetry = failed.length > 0;
   let kind, title, body;
   if (stopped) {

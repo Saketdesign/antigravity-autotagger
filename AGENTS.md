@@ -6,6 +6,7 @@ Eagle plugin that names, tags and describes selected items by running `devin -p`
 - `devin.js`: prompt, spawning Devin, parsing JSON, saving to the item, deleting each run's Devin session afterwards.
 - Runs use `XDG_CONFIG_HOME=$TMPDIR/devin-autotagger-config` with a minimal config (org id only, no MCP servers, no imports, no permission allow-list). Do not redirect `XDG_DATA_HOME`: Devin's login lives there.
 - Each run's cwd is the item's `.info` folder in the Eagle library; session cleanup only touches sessions in that folder.
+- Videos: ffmpeg (Homebrew) builds one downscaled contact sheet (6-12 frames, 360px, scene changes plus evenly spaced frames, in reading order) in a temp folder, which becomes the run's cwd and is deleted afterwards. The original video is never modified. The prompt asks about the interaction (gesture, motion, moment). This ffmpeg build has no `drawtext`, so frames aren't numbered.
 
 ## Related setup
 
