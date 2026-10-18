@@ -5,6 +5,7 @@ const DEFAULTS = {
   optReplaceTags: false,
   optAnnotation: true,
   optReplaceAnnotation: false,
+  optFolder: true,
   optSkipDone: true,
   devinPath: `${require('os').homedir()}/.local/bin/devin`,
   model: 'claude-opus-5-5-low',
@@ -15,6 +16,8 @@ const SETTINGS_KEY = 'devin-autotagger-settings';
 const MAX_CONCURRENCY = 2;
 const VOCAB_SIZE = 150;
 const VOCAB_EXCLUDE = /^Processed with AI Autotagger/;
+const SOURCE_TAG = /^@|\.[a-z]{2,}$/i;
+const FOLDER_EXCLUDE = /^Inbox$/i;
 
 const $ = id => document.getElementById(id);
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
@@ -94,6 +97,23 @@ async function loadVocabulary(markerTag) {
     .map(t => t.name);
 }
 
+async function loadSmartFolderTags(markerTag) {
+  const tags = new Set();
+  for (const folder of (await eagle.smartFolder?.getAll()) || []) {
+    for (const group of folder.conditions || []) {
+      if (group.boolean === 'FALSE') continue;
+      for (const rule of group.rules || []) if (rule.property === 'tags' && Array.isArray(rule.value)) rule.value.forEach(t => tags.add(t));
+    }
+  }
+  return [...tags].filter(t => t !== markerTag && !SOURCE_TAG.test(t));
+}
+
+async function loadFolders() {
+  return (await eagle.folder.getAll())
+    .filter(f => !FOLDER_EXCLUDE.test(f.name))
+    .map(f => ({ id: f.id, name: f.name, description: f.description || '' }));
+}
+
 function addLogRow(item) {
   const li = document.createElement('li');
   li.innerHTML = `<img><div class="body"><div class="name"></div><div class="status"><i class="icon"></i><span class="text"></span></div><div class="meta"></div></div>`;
@@ -119,7 +139,7 @@ function addLogRow(item) {
     done(item, result) {
       set('ok', 'Done');
       li.querySelector('.name').textContent = item.name;
-      li.querySelector('.meta').textContent = (result.tags || []).join(', ');
+      li.querySelector('.meta').textContent = [result.folder && `→ ${result.folder}`, (result.tags || []).join(', ')].filter(Boolean).join(' · ');
     },
     fail(message) { set('err', message, message); },
     skip(reason) { set('skipped', reason); },
@@ -135,11 +155,12 @@ async function run(retryItems) {
     replaceTags: s.optReplaceTags,
     annotation: s.optAnnotation,
     replaceAnnotation: s.optReplaceAnnotation,
+    folder: s.optFolder,
     devinPath: s.devinPath,
     model: s.model,
     markerTag: s.markerTag,
   };
-  if (!opts.name && !opts.tags && !opts.annotation) return alert('Pick at least one thing to update.');
+  if (!opts.name && !opts.tags && !opts.annotation && !opts.folder) return alert('Pick at least one thing to update.');
 
   const source = retryItems || selected;
   const isDone = i => !retryItems && s.optSkipDone && opts.markerTag && (i.tags || []).includes(opts.markerTag);
@@ -175,11 +196,13 @@ async function run(retryItems) {
   $('bar').hidden = false;
   progress();
 
-  try {
-    opts.vocabulary = opts.tags ? await loadVocabulary(opts.markerTag) : [];
-  } catch {
-    opts.vocabulary = [];
-  }
+  const safe = promise => promise.catch(() => []);
+  [opts.vocabulary, opts.preferredTags, opts.folders] = await Promise.all([
+    opts.tags ? safe(loadVocabulary(opts.markerTag)) : [],
+    opts.tags ? safe(loadSmartFolderTags(opts.markerTag)) : [],
+    opts.folder ? safe(loadFolders()) : [],
+  ]);
+  opts.vocabulary = opts.vocabulary.filter(t => !opts.preferredTags.includes(t));
 
   const worker = async () => {
     while (queue.length && !signal.aborted) {

@@ -69,7 +69,7 @@ async function buildContactSheet(file, outDir, signal) {
   return { sheetPath, frames: times.length, duration };
 }
 
-function buildPrompt({ fileName, instructions, vocabulary, want, currentName, currentTags, video }) {
+function buildPrompt({ fileName, instructions, vocabulary, preferredTags, folders, want, currentName, currentTags, video }) {
   const fields = [];
   if (want.name) fields.push(`"name": short Title Case name, 3-6 words, that says what this ${video ? 'interaction ' : ''}is (include the product or brand name if visible)`);
   if (want.tags) fields.push('"tags": array of 8-15 tags covering platform (Mobile/Desktop), Full Screen or Partial Screen, Light Mode or Dark Mode, screen or page type, the main UI components, and visual style or mood' +
@@ -77,6 +77,7 @@ function buildPrompt({ fileName, instructions, vocabulary, want, currentName, cu
   if (want.annotation) fields.push(video
     ? '"annotation": 2-4 sentence description of the interaction: what the user does, what moves or changes on screen, and how it is designed'
     : '"annotation": 2-4 sentence description of what is shown and how it is designed');
+  if (want.folder) fields.push(`"folder": the one folder this item belongs in, using the exact name from this list:\n${folders.map(f => `  - ${f.name}${f.description ? `: ${f.description}` : ''}`).join('\n')}`);
 
   return [
     `Use your read tool to open the image file "${fileName}" in the current directory and look at it carefully.`,
@@ -84,6 +85,7 @@ function buildPrompt({ fileName, instructions, vocabulary, want, currentName, cu
     instructions && `Context: ${instructions}`,
     currentName && `Current item name: ${currentName}`,
     currentTags && currentTags.length && `Current tags: ${currentTags.join(', ')}`,
+    want.tags && preferredTags && preferredTags.length && `These tags drive the library's smart folders. Whenever one of them accurately describes what is shown, include it with this exact spelling instead of a variant: ${preferredTags.join(', ')}`,
     vocabulary && vocabulary.length && `This library already uses these tags. Reuse the exact spelling when one fits, but you decide the final set and may add new tags when nothing fits: ${vocabulary.join(', ')}`,
     `Reply with ONLY a JSON object (no prose, no code fences) with these keys:\n- ${fields.join('\n- ')}`,
   ].filter(Boolean).join('\n\n');
@@ -98,6 +100,7 @@ function parseResult(text) {
   if (typeof data.name === 'string' && data.name.trim()) out.name = data.name.trim();
   if (Array.isArray(data.tags)) out.tags = [...new Set(data.tags.map(t => String(t).trim()).filter(Boolean))];
   if (typeof data.annotation === 'string' && data.annotation.trim()) out.annotation = data.annotation.trim();
+  if (typeof data.folder === 'string' && data.folder.trim()) out.folder = data.folder.trim();
   return out;
 }
 
@@ -161,7 +164,14 @@ function runDevin({ devinPath, model, imagePath, prompt, signal }) {
   });
 }
 
+const wantsFolder = (item, opts) => !!(opts.folder && opts.folders?.length && !(item.folders || []).length);
+
 function applyResult(item, result, opts) {
+  const folder = wantsFolder(item, opts) && result.folder && opts.folders.find(f => f.name.toLowerCase() === result.folder.toLowerCase());
+  if (folder) {
+    item.folders = [folder.id];
+    result.folder = folder.name;
+  } else delete result.folder;
   if (opts.name && result.name) item.name = result.name;
   if (opts.tags && result.tags) {
     const base = opts.replaceTags ? [] : item.tags || [];
@@ -182,7 +192,9 @@ async function analyzeItem(item, opts, signal) {
       fileName: path.basename(imagePath),
       instructions: opts.instructions,
       vocabulary: opts.vocabulary,
-      want: { name: opts.name, tags: opts.tags, annotation: opts.annotation },
+      preferredTags: opts.preferredTags,
+      folders: opts.folders,
+      want: { name: opts.name, tags: opts.tags, annotation: opts.annotation, folder: wantsFolder(item, opts) },
       currentName: item.name,
       currentTags: (item.tags || []).filter(t => t !== opts.markerTag),
       video: sheet && { frames: sheet.frames, duration: sheet.duration },
