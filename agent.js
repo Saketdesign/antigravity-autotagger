@@ -18,7 +18,7 @@ function pickImagePath(item) {
 }
 
 function runTool(name, args, signal) {
-  return new Promise((resolve, reject) => execFile(name, args, { env: devinEnv(), timeout: 60000, maxBuffer: 32 * 1024 * 1024, signal }, (err, stdout, stderr) => {
+  return new Promise((resolve, reject) => execFile(name, args, { env: toolEnv(), timeout: 60000, maxBuffer: 32 * 1024 * 1024, signal }, (err, stdout, stderr) => {
     if (!err) return resolve({ stdout, stderr });
     if (err.code === 'ENOENT') return reject(new Error(`${name} not found. Install it with: brew install ffmpeg`));
     reject(new Error(`${name} failed: ${(stderr || err.message).trim().split('\n').pop()}`));
@@ -80,7 +80,7 @@ function buildPrompt({ fileName, instructions, vocabulary, preferredTags, folder
   if (want.folder) fields.push(`"folder": the one folder this item belongs in, using the exact name from this list:\n${folders.map(f => `  - ${f.name}${f.description ? `: ${f.description}` : ''}`).join('\n')}`);
 
   return [
-    `Use your read tool to open the image file "${fileName}" in the current directory and look at it carefully.`,
+    `Open the image file "${fileName}" in the current directory and look at it carefully.`,
     video && `It is a contact sheet of ${video.frames} frames taken in order from a ${video.duration ? `${Math.round(video.duration)}-second ` : ''}screen recording of a UI interaction. Read the frames left to right, top to bottom, and work out what the user does and how the interface responds from frame to frame. Describe the recording, not the sheet.`,
     instructions && `Context: ${instructions}`,
     currentName && `Current item name: ${currentName}`,
@@ -91,11 +91,14 @@ function buildPrompt({ fileName, instructions, vocabulary, preferredTags, folder
   ].filter(Boolean).join('\n\n');
 }
 
-function parseResult(text) {
-  const start = text.indexOf('{');
-  const end = text.lastIndexOf('}');
-  if (start < 0 || end <= start) throw new Error('Devin did not return JSON');
-  const data = JSON.parse(text.slice(start, end + 1));
+function parseResult(output) {
+  let data = output;
+  if (typeof output === 'string') {
+    const start = output.indexOf('{');
+    const end = output.lastIndexOf('}');
+    if (start < 0 || end <= start) throw new Error('Antigravity did not return JSON');
+    data = JSON.parse(output.slice(start, end + 1));
+  }
   const out = {};
   if (typeof data.name === 'string' && data.name.trim()) out.name = data.name.trim();
   if (Array.isArray(data.tags)) out.tags = [...new Set(data.tags.map(t => String(t).trim()).filter(Boolean))];
@@ -104,62 +107,60 @@ function parseResult(text) {
   return out;
 }
 
-function leanConfigHome() {
-  const root = path.join(os.tmpdir(), 'devin-autotagger-config');
-  const dir = path.join(root, 'devin');
-  fs.mkdirSync(dir, { recursive: true });
-  let user = {};
-  try { user = JSON.parse(fs.readFileSync(path.join(os.homedir(), '.config/devin/config.json'), 'utf8')); } catch {}
-  const config = {
-    ...(user.devin && { devin: user.devin }),
-    read_config_from: { agents_standard: false, cursor: false, windsurf: false, claude: false },
-  };
-  fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify(config, null, 2));
-  fs.writeFileSync(path.join(dir, 'mcp_config.json'), JSON.stringify({ mcpServers: {} }));
-  return root;
-}
-
-function devinEnv() {
+function toolEnv() {
   const home = os.homedir();
   return {
     ...process.env,
     HOME: home,
-    XDG_CONFIG_HOME: leanConfigHome(),
     PATH: [`${home}/.local/bin`, '/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin', process.env.PATH].filter(Boolean).join(':'),
   };
 }
 
-function devinCommand(devinPath, args, cwd) {
-  return new Promise(resolve => execFile(devinPath, args, { cwd, env: devinEnv(), timeout: 30000 }, (err, stdout) => resolve(err ? '' : stdout)));
+function buildSchema(want, folders) {
+  const properties = {};
+  if (want.name) properties.name = { type: 'string' };
+  if (want.tags) properties.tags = { type: 'array', items: { type: 'string' } };
+  if (want.annotation) properties.annotation = { type: 'string' };
+  if (want.folder) properties.folder = { type: 'string', enum: folders.map(f => f.name) };
+  return { type: 'object', properties, required: Object.keys(properties) };
 }
 
-async function deleteSessions(devinPath, cwd) {
-  let sessions = [];
-  try { sessions = JSON.parse(await devinCommand(devinPath, ['list', '--format', 'json'], cwd)); } catch {}
-  for (const s of sessions) await devinCommand(devinPath, ['rm', '--force', s.id], cwd);
+// Each run leaves a conversation database and a "brain" folder behind; remove only the one this run made.
+function deleteConversation(id) {
+  if (!/^[\w-]+$/.test(id || '')) return;
+  const root = path.join(os.homedir(), '.gemini/antigravity-cli');
+  fs.rmSync(path.join(root, 'brain', id), { recursive: true, force: true });
+  for (const f of fs.readdirSync(path.join(root, 'conversations'), { withFileTypes: true }))
+    if (f.name.startsWith(`${id}.`)) fs.rmSync(path.join(root, 'conversations', f.name), { force: true });
 }
 
-function runDevin({ devinPath, model, imagePath, prompt, signal }) {
-  const args = ['--respect-workspace-trust', 'false', '--permission-mode', 'auto'];
+function runAgent({ agyPath, model, imagePath, prompt, schema, signal }) {
+  const args = ['-p', prompt, '--output-format', 'json', '--print-timeout', `${TIMEOUT_MS / 1000}s`];
+  if (schema) args.push('--json-schema', JSON.stringify(schema));
   if (model) args.push('--model', model);
-  args.push('-p', prompt);
 
   return new Promise((resolve, reject) => {
-    const child = spawn(devinPath, args, { cwd: path.dirname(imagePath), env: devinEnv(), stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(agyPath, args, { cwd: path.dirname(imagePath), env: toolEnv(), stdio: ['ignore', 'pipe', 'pipe'] });
     let stdout = '';
     let stderr = '';
     const kill = () => child.kill('SIGTERM');
-    const timer = setTimeout(kill, TIMEOUT_MS);
+    const timer = setTimeout(kill, TIMEOUT_MS + 15000);
     signal?.addEventListener('abort', kill);
     child.stdout.on('data', d => { stdout += d; });
     child.stderr.on('data', d => { stderr += d; });
-    child.on('error', err => { clearTimeout(timer); reject(err); });
+    child.on('error', err => { clearTimeout(timer); reject(err.code === 'ENOENT' ? new Error(`Antigravity CLI not found at ${agyPath}`) : err); });
     child.on('close', code => {
       clearTimeout(timer);
       signal?.removeEventListener('abort', kill);
+      let out = null;
+      try { out = JSON.parse(stdout.slice(stdout.indexOf('{'))); } catch {}
+      try { deleteConversation(out?.conversation_id); } catch {}
       if (signal?.aborted) return reject(new Error('Stopped'));
-      if (code !== 0) return reject(new Error((stderr || stdout).trim().split('\n').pop() || `Devin exited with code ${code}`));
-      resolve(stdout);
+      if (code !== 0 || !out || out.status !== 'SUCCESS') {
+        const lastLine = (stderr || stdout).trim().split('\n').pop();
+        return reject(new Error(out?.error || lastLine || `Antigravity exited with code ${code}`));
+      }
+      resolve(out.structured_output || out.response || '');
     });
   });
 }
@@ -182,35 +183,32 @@ function applyResult(item, result, opts) {
 }
 
 async function analyzeItem(item, opts, signal) {
-  const workDir = isVideo(item) ? fs.mkdtempSync(path.join(os.tmpdir(), 'devin-autotagger-')) : null;
+  const workDir = isVideo(item) ? fs.mkdtempSync(path.join(os.tmpdir(), 'autotagger-')) : null;
   let output;
   try {
     const sheet = workDir && await buildContactSheet(item.filePath, workDir, signal);
     const imagePath = sheet ? sheet.sheetPath : pickImagePath(item);
     if (!imagePath) throw new Error('No image file');
+    const want = { name: opts.name, tags: opts.tags, annotation: opts.annotation, folder: wantsFolder(item, opts) };
     const prompt = buildPrompt({
       fileName: path.basename(imagePath),
       instructions: opts.instructions,
       vocabulary: opts.vocabulary,
       preferredTags: opts.preferredTags,
       folders: opts.folders,
-      want: { name: opts.name, tags: opts.tags, annotation: opts.annotation, folder: wantsFolder(item, opts) },
+      want,
       currentName: item.name,
       currentTags: (item.tags || []).filter(t => t !== opts.markerTag),
       video: sheet && { frames: sheet.frames, duration: sheet.duration },
     });
-    try {
-      output = await runDevin({ devinPath: opts.devinPath, model: opts.model, imagePath, prompt, signal });
-    } finally {
-      await deleteSessions(opts.devinPath, path.dirname(imagePath));
-    }
+    output = await runAgent({ agyPath: opts.agyPath, model: opts.model, imagePath, prompt, schema: buildSchema(want, opts.folders || []), signal });
   } finally {
     if (workDir) fs.rmSync(workDir, { recursive: true, force: true });
   }
   const result = parseResult(output);
-  if (opts.tags && !result.tags?.length) throw new Error('Devin could not read the image');
+  if (opts.tags && !result.tags?.length) throw new Error('Antigravity could not read the image');
   applyResult(item, result, opts);
   return result;
 }
 
-if (typeof module !== 'undefined') module.exports = { isVideo, buildContactSheet, pickImagePath, buildPrompt, parseResult, runDevin, applyResult, analyzeItem, deleteSessions };
+if (typeof module !== 'undefined') module.exports = { isVideo, buildContactSheet, pickImagePath, buildPrompt, parseResult, runAgent, applyResult, analyzeItem, deleteConversation };

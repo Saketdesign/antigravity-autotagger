@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "platform": "mac",
   "arch": "all",
-  "name": "Devin Autotagger",
+  "name": "Antigravity Autotagger",
   "logo": "logo.png",
-  "keywords": ["ai", "tag", "rename", "devin"],
+  "keywords": ["ai", "tag", "rename", "antigravity", "gemini"],
   "devTools": false,
   "main": {
     "url": "index.html",

@@ -7,12 +7,14 @@ const DEFAULTS = {
   optReplaceAnnotation: false,
   optFolder: true,
   optSkipDone: true,
-  devinPath: `${require('os').homedir()}/.local/bin/devin`,
-  model: 'claude-opus-5-5-low',
+  agyPath: `${require('os').homedir()}/.local/bin/agy`,
+  model: 'gemini-3.8-flash-medium',
   concurrency: 2,
-  markerTag: 'Tagged by Devin',
+  markerTag: 'Auto-tagged',
 };
-const SETTINGS_KEY = 'devin-autotagger-settings';
+const SETTINGS_KEY = 'autotagger-settings';
+const OLD_SETTINGS_KEY = 'devin-autotagger-settings';
+const OLD_MARKER_TAG = 'Tagged by Devin';
 const MAX_CONCURRENCY = 2;
 const VOCAB_SIZE = 150;
 const VOCAB_EXCLUDE = /^Processed with AI Autotagger/;
@@ -26,7 +28,18 @@ let controller = null;
 let hasRun = false;
 let lastFailed = [];
 
+// Settings saved while the plugin ran Devin: keep everything except the Devin path, model and marker tag.
+function migrateSettings() {
+  const old = localStorage.getItem(OLD_SETTINGS_KEY);
+  if (!old || localStorage.getItem(SETTINGS_KEY)) return;
+  const { devinPath, model, markerTag, ...rest } = JSON.parse(old);
+  if (markerTag && markerTag !== OLD_MARKER_TAG) rest.markerTag = markerTag;
+  localStorage.setItem(SETTINGS_KEY, JSON.stringify(rest));
+  localStorage.removeItem(OLD_SETTINGS_KEY);
+}
+
 function loadSettings() {
+  migrateSettings();
   const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
   const s = { ...DEFAULTS, ...saved };
   s.concurrency = Math.min(s.concurrency, MAX_CONCURRENCY);
@@ -158,7 +171,7 @@ async function run(retryItems) {
     annotation: s.optAnnotation,
     replaceAnnotation: s.optReplaceAnnotation,
     folder: s.optFolder,
-    devinPath: s.devinPath,
+    agyPath: s.agyPath,
     model: s.model,
     markerTag: s.markerTag,
   };
@@ -217,7 +230,7 @@ async function run(retryItems) {
       try {
         const item = (await eagle.item.getById(queued.id)) || queued;
         const result = await analyzeItem(item, isTagged(queued) ? folderOnlyOpts : opts, signal);
-        if (isTagged(queued) && !result.folder) throw new Error('Devin did not pick a folder');
+        if (isTagged(queued) && !result.folder) throw new Error('Antigravity did not pick a folder');
         await item.save();
         row.done(item, result);
         done++;
