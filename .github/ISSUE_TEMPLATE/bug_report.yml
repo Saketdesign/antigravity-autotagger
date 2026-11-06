@@ -1,0 +1,46 @@
+name: bug report
+description: file a bug report to help fix a problem
+title: "bug: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        thank you for reporting a bug. please share reproduction steps and context below.
+  - type: textarea
+    id: description
+    attributes:
+      label: what happened?
+      description: describe what went wrong.
+      placeholder: tell us what you observed.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: steps to reproduce
+      description: steps to trigger the bug.
+      placeholder: |
+        1. select item in eagle
+        2. open antigravity autotagger
+        3. click run
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: expected behavior
+      description: what did you expect to happen instead?
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: environment details
+      description: your os, eagle version, node version, and antigravity version.
+      placeholder: |
+        - os: macos 15.x
+        - eagle: 4.0
+        - agy: 0.x
+    validations:
+      required: false
