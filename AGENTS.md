@@ -2,8 +2,9 @@
 
 Eagle plugin that names, tags and describes selected items by running the Antigravity CLI (`agy -p`, default model `gemini-3.8-flash-medium`) once per image. It used Devin until the Devin subscription ended; the repo name is historical.
 
-- `plugin.js`: UI, settings, run queue (max 2 at once; higher selections previously ran the Mac out of memory). Settings saved under the old Devin key are migrated once (Devin path, model and old marker tag dropped).
-- `agent.js`: prompt, spawning `agy`, parsing JSON, saving to the item, deleting each run's Antigravity conversation afterwards.
+- `src/components/app/`: the UI, in react on glaze components. `use-autotagger.ts` holds the run queue (max 2 at once; higher selections previously ran the Mac out of memory), `app.tsx` and `log-row.tsx` draw it.
+- `src/lib/autotagger.ts`: settings and the eagle lookups. Settings saved under the old Devin key are migrated once (Devin path, model and old marker tag dropped).
+- `public/agent.js`: a classic script (not bundled) that defines the global `analyzeItem`: prompt, spawning `agy`, parsing JSON, saving to the item, deleting each run's Antigravity conversation afterwards.
 - Runs use `--output-format json` plus `--json-schema` built from the wanted fields (folder is an enum of folder names); the answer comes back in `structured_output`, with `response` text as a fallback. `--mode auto` isn't available on this account, and print mode reads files in the cwd without a permission prompt.
 - Antigravity's config lives in `~/.gemini` and can't be redirected. The configured MCP servers don't start in print mode (checked with `ps`), so runs use the normal config.
 - Each run leaves `~/.gemini/antigravity-cli/conversations/<id>.db` and `brain/<id>/`; only the `conversation_id` from that run's JSON output is deleted. A run killed by Stop or the timeout prints no id, so its conversation stays behind.
@@ -14,6 +15,16 @@ Eagle plugin that names, tags and describes selected items by running the Antigr
 - Design Scrapper imports land with no folder; the `To Tag` smart folder (source tags, minus `Auto-tagged`) is where to select them for a run. Edit it through Eagle's web API (`POST localhost:41595/api/v2/smartFolder/update` with `id` + `conditions`), because the Eagle skill drops the exclude flag and its smart-folder tools are disabled.
 - Videos: ffmpeg (Homebrew) builds one downscaled contact sheet (6-12 frames, 360px, scene changes plus evenly spaced frames, in reading order) in a temp folder, which becomes the run's cwd and is deleted afterwards. The original video is never modified. The prompt asks about the interaction (gesture, motion, moment). This ffmpeg build has no `drawtext`, so frames aren't numbered.
 
+## Build and ui
+
+- the ui is vite + react + tailwind v4 on the glaze design system (design.how). `manifest.json` points at `dist/index.html`, and `dist/` is not committed, so run `npm run build` (or `npm run dev` to rebuild on save) before loading the plugin in eagle.
+- the build emits one classic script and strips `crossorigin`, because eagle opens the page from disk (`file://`).
+- eagle's node `require` is read through `window.require`, since vite would otherwise stub it out.
+- follow `.claude/skills/glaze/SKILL.md` for every ui change. glaze components live in `src/components/glaze/`; app code goes under `src/components/` so tailwind sees its classes.
+- lint: `npx eslint -c glaze.eslint.config.mjs .` must report nothing. `npm run build` also type-checks.
+- ui copy is lowercase (the saket writing skill). this overrides glaze's sentence-case rule.
+- press feedback uses glaze's own tokens (`--dur-press`, `--scale-press-flat`, `bg-hover-row`, `bg-pressed`), with no shadows even where the tactile-design skill suggests them, because glaze bans them.
+
 ## Related setup
 
 - Antigravity CLI: `~/.local/bin/agy` (`agy models` lists model ids).
@@ -22,4 +33,4 @@ Eagle plugin that names, tags and describes selected items by running the Antigr
 
 ## Testing
 
-No test suite. To check a change without Eagle, require `agent.js` from node and call `analyzeItem` with a fake item pointing at an image in the library (don't call `save`). Check: a JSON result comes back, no MCP processes appear under the `agy` process, and no new entry is left in `~/.gemini/antigravity-cli/conversations` or `brain`. Reopen the plugin window in Eagle to load changes.
+No test suite. To check a change without Eagle, require `public/agent.js` from node and call `analyzeItem` with a fake item pointing at an image in the library (don't call `save`). Check: a JSON result comes back, no MCP processes appear under the `agy` process, and no new entry is left in `~/.gemini/antigravity-cli/conversations` or `brain`. Reopen the plugin window in Eagle to load changes.

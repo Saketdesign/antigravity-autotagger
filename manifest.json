@@ -5,10 +5,16 @@
   "arch": "all",
   "name": "Antigravity Autotagger",
   "logo": "logo.png",
-  "keywords": ["ai", "tag", "rename", "antigravity", "gemini"],
+  "keywords": [
+    "ai",
+    "tag",
+    "rename",
+    "antigravity",
+    "gemini"
+  ],
   "devTools": false,
   "main": {
-    "url": "index.html",
+    "url": "dist/index.html",
     "width": 560,
     "height": 720,
     "minWidth": 480,

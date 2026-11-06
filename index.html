@@ -1,54 +1,13 @@
-<!DOCTYPE html>
-<html theme="dark">
+<!doctype html>
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8">
-  <link rel="stylesheet" href="app.css">
-  <script src="agent.js"></script>
-  <script src="plugin.js" defer></script>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>antigravity autotagger</title>
+  <script src="./agent.js"></script>
 </head>
-<body>
-  <main>
-    <section>
-      <h2>Instructions</h2>
-      <textarea id="instructions" rows="3"></textarea>
-    </section>
-
-    <section>
-      <h2>What to update</h2>
-      <label><input type="checkbox" id="optName"> Rename item</label>
-      <label><input type="checkbox" id="optTags"> Add tags</label>
-      <label class="sub"><input type="checkbox" id="optReplaceTags"> Replace existing tags instead of adding</label>
-      <label><input type="checkbox" id="optAnnotation"> Write description</label>
-      <label class="sub"><input type="checkbox" id="optReplaceAnnotation"> Replace existing description</label>
-      <label><input type="checkbox" id="optFolder"> Put in a folder (only items not in one yet)</label>
-      <label><input type="checkbox" id="optSkipDone"> Skip items already processed</label>
-    </section>
-
-    <details>
-      <summary>Advanced</summary>
-      <label class="field">Antigravity CLI path <input type="text" id="agyPath"></label>
-      <label class="field">Model (blank = default) <input type="text" id="model" placeholder="e.g. gemini-3.8-flash-medium"></label>
-      <label class="field">Run at once <input type="number" id="concurrency" min="1" max="2"></label>
-      <label class="field">Marker tag <input type="text" id="markerTag"></label>
-    </details>
-
-    <section class="log-wrap">
-      <h2>Progress <span id="progress"></span></h2>
-      <div id="bar" hidden><div id="barFill"></div></div>
-      <div id="summary" hidden>
-        <span id="summaryText"></span>
-        <button id="retryBtn" class="secondary small" hidden>Retry failed</button>
-      </div>
-      <ul id="log"></ul>
-    </section>
-  </main>
-
-  <footer>
-    <span id="selection">No items selected</span>
-    <div>
-      <button id="stopBtn" class="secondary" hidden>Stop</button>
-      <button id="runBtn" disabled>Analyze</button>
-    </div>
-  </footer>
+<body class="glaze" style="margin:0">
+  <div id="root"></div>
+  <script type="module" src="/src/main.tsx"></script>
 </body>
 </html>
